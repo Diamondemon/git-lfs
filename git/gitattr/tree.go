@@ -2,10 +2,12 @@ package gitattr
 
 import (
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/git-lfs/git-lfs/v3/errors"
 	"github.com/git-lfs/git-lfs/v3/git/core"
+	"github.com/git-lfs/git-lfs/v3/tools"
 	"github.com/git-lfs/git-lfs/v3/tr"
 	"github.com/git-lfs/gitobj/v2"
 )
@@ -192,6 +194,13 @@ func (t *Tree) Applied(to string) []*Attr {
 	return attrs
 }
 
+func (t *Tree) AppliedExcludeSpecialPatterns(to string) []*Attr {
+	if !t.mp.didReadMacros {
+		t.processMacros()
+	}
+	return t.applied(to)
+}
+
 func (t *Tree) applied(to string) []*Attr {
 	var attrs []*Attr
 
@@ -209,4 +218,54 @@ func (t *Tree) applied(to string) []*Attr {
 	}
 
 	return attrs
+}
+
+func (t *Tree) ToAttribPaths(workingDir string) []AttributePath {
+	if !t.mp.didReadMacros {
+		t.processMacros()
+	}
+	var paths []AttributePath
+	if t.systemAttributes != nil {
+		paths = append(paths, t.systemAttributes.toAttribPaths("", t.systemPath)...)
+	}
+	if t.userAttributes != nil {
+		paths = append(paths, t.userAttributes.toAttribPaths("", t.userPath)...)
+	}
+	paths = append(paths, t.toAttribPaths(workingDir, filepath.Join(workingDir, ".gitattributes"))...)
+	if t.repoAttributes != nil {
+		paths = append(paths, t.repoAttributes.toAttribPaths("", t.repoPath)...)
+	}
+
+	return paths
+}
+
+func (t *Tree) ToAttribPathsExcludeSpecialPatterns(workingDir string) []AttributePath {
+	if !t.mp.didReadMacros {
+		t.processMacros()
+	}
+
+	return t.toAttribPaths(workingDir, filepath.Join(workingDir, ".gitattributes"))
+}
+
+func (t *Tree) toAttribPaths(workingDir string, path string) []AttributePath {
+	relfile := path
+	if len(workingDir) > 0 {
+		relfile, _ = filepath.Rel(workingDir, path)
+	}
+	// Go 1.20 now always returns ".\foo" instead of "foo" in filepath.Rel,
+	// but only on Windows.  Strip the extra dot here so our paths are
+	// always fully relative with no "." or ".." components.
+	reldir := filepath.ToSlash(tools.TrimCurrentPrefix(filepath.Dir(relfile)))
+	if reldir == "." {
+		reldir = ""
+	}
+	patternLines := t.mp.ProcessLines(t.lines, false)
+
+	paths := patternLinesToAttrPaths(patternLines, relfile, reldir, workingDir, t.eol)
+
+	for dir, child := range t.children {
+		childPaths := child.toAttribPaths(workingDir, filepath.Join(workingDir, dir, ".gitattributes"))
+		paths = append(paths, childPaths...)
+	}
+	return paths
 }
