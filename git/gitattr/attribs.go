@@ -4,7 +4,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -170,8 +169,6 @@ func attrPathsFromFile(mp *MacroProcessor, path, workingDir string, readMacros b
 }
 
 func AttrPathsFromReader(mp *MacroProcessor, fpath, workingDir string, rdr io.Reader, readMacros bool) []AttributePath {
-	var paths []AttributePath
-
 	relfile, _ := filepath.Rel(workingDir, fpath)
 	// Go 1.20 now always returns ".\foo" instead of "foo" in filepath.Rel,
 	// but only on Windows.  Strip the extra dot here so our paths are
@@ -180,7 +177,6 @@ func AttrPathsFromReader(mp *MacroProcessor, fpath, workingDir string, rdr io.Re
 	if reldir == "." {
 		reldir = ""
 	}
-	source := &AttributeSource{Path: relfile}
 
 	lines, eol, err := ParseLines(rdr)
 	if err != nil {
@@ -188,6 +184,14 @@ func AttrPathsFromReader(mp *MacroProcessor, fpath, workingDir string, rdr io.Re
 	}
 
 	patternLines := mp.ProcessLines(lines, readMacros)
+
+	return patternLinesToAttrPaths(patternLines, relfile, reldir, workingDir, eol)
+}
+
+func patternLinesToAttrPaths(patternLines []PatternLine, relfile, reldir, workingDir, eol string) []AttributePath {
+	var paths []AttributePath
+	source := &AttributeSource{Path: relfile}
+	source.LineEnding = eol
 
 	for _, line := range patternLines {
 		lockable := false
@@ -208,8 +212,8 @@ func AttrPathsFromReader(mp *MacroProcessor, fpath, workingDir string, rdr io.Re
 		}
 
 		pattern := line.Pattern().String()
-		if len(reldir) > 0 {
-			pattern = path.Join(reldir, pattern)
+		if len(workingDir) > 0 {
+			pattern = filepath.Join(reldir, pattern)
 		}
 
 		paths = append(paths, AttributePath{
@@ -219,9 +223,6 @@ func AttrPathsFromReader(mp *MacroProcessor, fpath, workingDir string, rdr io.Re
 			Tracked:  tracked,
 		})
 	}
-
-	source.LineEnding = eol
-
 	return paths
 }
 
