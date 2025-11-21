@@ -144,23 +144,27 @@ func linesInTree(db *gitobj.ObjectDatabase, t *gitobj.Tree, mp *MacroProcessor) 
 	return NewFromReader(mp, blob.Contents)
 }
 
+func (t *Tree) processMacros() {
+	if t.systemAttributes != nil {
+		t.mp.ProcessMacros(t.systemAttributes.lines)
+	}
+	if t.userAttributes != nil {
+		t.mp.ProcessMacros(t.userAttributes.lines)
+	}
+	t.mp.ProcessMacros(t.lines)
+
+	if t.repoAttributes != nil {
+		t.mp.ProcessMacros(t.repoAttributes.lines)
+	}
+}
+
 // Applied returns a slice of attributes applied to the given path, relative to
 // the receiving tree. It traverse through sub-trees in a topological ordering,
 // if there are relevant .gitattributes matching that path.
 func (t *Tree) Applied(to string) []*Attr {
 	var attrs []*Attr
 	if !t.mp.didReadMacros {
-		if t.systemAttributes != nil {
-			t.mp.ProcessMacros(t.systemAttributes.lines)
-		}
-		if t.userAttributes != nil {
-			t.mp.ProcessMacros(t.userAttributes.lines)
-		}
-		t.mp.ProcessMacros(t.lines)
-
-		if t.repoAttributes != nil {
-			t.mp.ProcessMacros(t.repoAttributes.lines)
-		}
+		t.processMacros()
 	}
 
 	if t.systemAttributes != nil {
