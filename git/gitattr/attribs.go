@@ -47,21 +47,51 @@ func (s *AttributeSource) String() string {
 	return s.Path
 }
 
-// GetRepoAttributePaths beahves as GetAttributePaths, and loads information
+// GetRepoAttributePaths behaves as GetAttributePaths, and loads information
 // only from the repo attributes file.
-func GetRepoAttributePaths(mp *MacroProcessor, gitEnv core.Environment) []AttributePath {
-	af, _ := gitEnv.Get("core.attributesfile")
-	af, err := tools.ExpandConfigPath(af, "git/attributes")
+func GetUserAttributePaths(mp *MacroProcessor, gitEnv core.Environment) ([]AttributePath, error) {
+	reader, path, err := GetUserAttributesFile(gitEnv)
 	if err != nil {
-		return nil
+		return nil, err
+	}
+	if reader == nil {
+		return nil, nil
+	}
+	// The working directory for the user gitattributes file is blank.
+	return AttrPathsFromReader(mp, path, "", reader, true), nil
+}
+
+func GetUserAttributesFile(gitEnv core.Environment) (io.Reader, string, error) {
+	path, _ := gitEnv.Get("core.attributesfile")
+	path, err := tools.ExpandConfigPath(path, "git/attributes")
+	if err != nil {
+		return nil, "", err
+	}
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil, "", nil
 	}
 
-	if _, err := os.Stat(af); os.IsNotExist(err) {
-		return nil
+	reader, err := os.Open(path)
+	if err != nil {
+		return nil, "", err
+	}
+	defer reader.Close()
+	return reader, path, nil
+}
+
+func GetRepoAttributeFile(gitDir string) (io.Reader, string, error) {
+	path := filepath.Join(gitDir, "info", "attributes")
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil, "", nil
 	}
 
-	// The working directory for the root gitattributes file is blank.
-	return attrPathsFromFile(mp, af, "", true)
+	reader, err := os.Open(path)
+	if err != nil {
+		return nil, "", err
+	}
+	defer reader.Close()
+	return reader, path, nil
 }
 
 // GetSystemAttributePaths behaves as GetAttributePaths, and loads information
@@ -72,6 +102,10 @@ func GetSystemAttributePaths(mp *MacroProcessor, env core.Environment) ([]Attrib
 	if err != nil {
 		return nil, err
 	}
+	if reader == nil {
+		return nil, nil
+	}
+	// The working directory for the system gitattributes file is blank.
 	return AttrPathsFromReader(mp, path, "", reader, true), nil
 }
 
@@ -99,30 +133,6 @@ func GetSystemAttributesFile(osEnv core.Environment) (io.Reader, string, error) 
 
 		path = filepath.Join(prefix, "etc", "gitattributes")
 	}
-
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil, "", nil
-	}
-
-	reader, err := os.Open(path)
-	if err != nil {
-		return nil, "", err
-	}
-	defer reader.Close()
-	return reader, path, nil
-}
-
-func GetUserAttributesFile(osEnv core.Environment) (io.Reader, string, error) {
-	var path string
-	prefix, ok := osEnv.Get("XDG_CONFIG_HOME")
-	if !ok || len(prefix) == 0 {
-		prefix, ok = osEnv.Get("HOME")
-		if !ok || len(prefix) == 0 {
-			return nil, "", nil
-		}
-		prefix = filepath.Join(prefix, ".config")
-	}
-	path = filepath.Join(prefix, "git", "attributes")
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, "", nil
