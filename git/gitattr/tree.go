@@ -22,14 +22,18 @@ type Tree struct {
 	mp *MacroProcessor
 
 	systemAttributes *Tree
+	systemPath       string
 
 	userAttributes *Tree
-	// lines are the lines of the .gitattributes at this level of the tree.
+	userPath       string
+	// Lines are the lines of the .gitattributes at this level of the tree.
 	lines []Line
-	// children are the named child directories in the repository.
+	eol   string
+	// Children are the named child directories in the repository.
 	children map[string]*Tree
 
 	repoAttributes *Tree
+	repoPath       string
 }
 
 // New constructs a *Tree starting at the given tree "t" and reading objects
@@ -78,18 +82,20 @@ func newFromGitTree(db *gitobj.ObjectDatabase, t *gitobj.Tree, mp *MacroProcesso
 }
 
 func NewFromReader(mp *MacroProcessor, rdr io.Reader) (*Tree, error) {
-	lines, _, err := ParseLines(rdr)
+	lines, eol, err := ParseLines(rdr)
 	if err != nil {
 		return nil, err
 	}
 	return &Tree{
 		mp:    mp,
 		lines: lines,
+		eol:   eol,
 	}, nil
 }
 
 func (t *Tree) FindSpecialAttributes(gitEnv, osEnv Environment, gitDir string) error {
-	systemReader, _, err := GetSystemAttributesFile(osEnv)
+	systemReader, systemPath, err := GetSystemAttributesFile(osEnv)
+	t.systemPath = systemPath
 	if err != nil {
 		return err
 	}
@@ -100,7 +106,8 @@ func (t *Tree) FindSpecialAttributes(gitEnv, osEnv Environment, gitDir string) e
 		return err
 	}
 
-	userReader, _, err := GetUserAttributesFile(gitEnv)
+	userReader, userPath, err := GetUserAttributesFile(gitEnv)
+	t.userPath = userPath
 	if err != nil {
 		return err
 	}
@@ -111,7 +118,8 @@ func (t *Tree) FindSpecialAttributes(gitEnv, osEnv Environment, gitDir string) e
 		return err
 	}
 
-	repoReader, _, err := GetRepoAttributeFile(gitDir)
+	repoReader, repoPath, err := GetRepoAttributeFile(gitDir)
+	t.repoPath = repoPath
 	if err != nil {
 		return err
 	}
